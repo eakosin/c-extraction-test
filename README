@@ -1,0 +1,36 @@
+Requirements:
+
+	python 2.6 / python 2.7
+	gcc
+	g++
+
+	
+Installation:
+
+	Copy the bin and share folders to /usr.
+
+
+Running:
+
+	To generate a template test case setup:
+
+		c-extraction-test -g
+		
+	To run a set of test cases, run:
+
+		c-extraction-test
+		
+	in the directory that contains the configuration file.
+
+	If you need to run the script from another directory:
+
+		c-extraction-test -d [DIRECTORY]
+		
+	For help:
+
+		c-extraction-test -h
+		
+
+TODO:
+
+	Create install script, create man page.

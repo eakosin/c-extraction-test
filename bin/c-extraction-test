@@ -1,0 +1,365 @@
+#!/usr/bin/python
+
+# C Function Extraction Test Framework
+# Copyright (C) 2014  Evan Arthur Kosin
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+import commands
+import sys
+import optparse
+
+#Command line options
+parser = optparse.OptionParser()
+parser.add_option("-g", "--generate", action="store_true", dest="generate" ,help="Generate template test configuration in the current directory.")
+parser.add_option("-d", "--directory", dest="directory" ,help="Specify a DIRECTORY to work out of. This also modifies the -g option.", metavar="DIRECTORY")
+(options, args) = parser.parse_args()
+
+#Set working directory to user selected option if passed.
+workingDirectory = "./"
+if(options.directory != None):
+	workingDirectory = options.directory
+
+if(options.generate):
+	status = commands.getstatusoutput('tar -xf /usr/share/c-extraction-test/template.tar -C ' + workingDirectory)
+	if(status[0] != 0):
+		print("Error:\n   Could not copy data.")
+		exit(1)
+	exit(0)
+
+#Configuration File Keywords
+reportTitleKeyword = "reportTitle"
+reportDescriptionKeyword = "reportDescription"
+sourceDirectoryKeyword = "sourceDirectory"
+groupReportsByFolderKeyword = "groupReportsByFolder"
+
+#Test Case File Keywords
+titleKeyword = "title"
+descriptionKeyword = "description"
+fileKeyword = "file"
+classKeyword = "class"
+functionKeyword = "function"
+lineHintKeyword = "lineHint"
+parametersKeyword = "parameters"
+returnTypeKeyword = "returnType"
+doesReturnKeyword = "doesReturn"
+compilerKeyword = "compiler"
+compilerParametersKeyword = "compilerParameters"
+supressWarningsKeyword = "supressWarnings"
+headerKeyword = "HEADER"
+endHeaderKeyword = "ENDHEADER"
+printStatementKeyword = "PRINTSTATEMENT"
+endPrintStatementKeyword = "ENDPRINTSTATEMENT"
+expectedResultKeyword = "EXPECTEDRESULT"
+endExpectedResultKeyword = "ENDEXPECTEDRESULT"
+
+#Check for g++ and prompt for it's installation
+if(commands.getstatusoutput('g++ -v')[0] != 0):
+	print("g++ is not installed or is not in the PATH.")
+	sys.exit(1)
+
+#Create directories for testing.
+commands.getoutput('mkdir ' + workingDirectory + 'generated')
+commands.getoutput('mkdir ' + workingDirectory + 'compiler-results')
+commands.getoutput('mkdir ' + workingDirectory + 'binaries')
+commands.getoutput('mkdir ' + workingDirectory + 'reports')
+
+#Clean out files and folders to be replaced.
+commands.getoutput('rm ' + workingDirectory + 'generated/*')
+commands.getoutput('rm ' + workingDirectory + 'compiler-results/*')
+commands.getoutput('rm ' + workingDirectory + 'binaries/*')
+commands.getoutput('rm ' + workingDirectory + 'reports/*')
+
+#Return SUCCESS and FAIL
+def results(expectedResult, actualResult):
+	if(expectedResult == actualResult):
+		return "PASS"
+	else:
+		return "FAIL"
+
+#Take a list of strings and make it a single string.
+def textListToString(textList):
+	text = ""
+	for textLine in textList:
+		text += textLine
+	return text
+
+#Search for the function based upon it's name and return type. This avoids using number lines.
+def findFunctionInFile(fileString, functionName, returnType, lineHint = -1):
+	#Find and return all function declarations.
+	if(lineHint == -1):
+		combinedFileString = ""
+		#Find each function declaration.
+		for lineNumber in range(len(fileString)):
+			if(-1 != fileString[lineNumber].replace(" ","").replace("\t","").find(returnType+functionName)):
+				start = lineNumber
+				end = 0
+				#Count braces after finding the first one, and return the line numbers.
+				first = True
+				countBraces = 0
+				found = False
+				for subLineNumber in range(start,len(fileString)):
+					for char in fileString[subLineNumber]:
+						if(countBraces <= 0 and not first):
+							end = subLineNumber
+							found = True
+							break
+						if(char == '{'):
+							if(first):
+								first = False
+								countBraces += 1
+							else:
+								countBraces += 1
+						elif(char == '}'):
+							countBraces -= 1
+					if(found):
+						break
+				combinedFileString += textListToString(fileString[start:end+1])
+		return combinedFileString
+	#Search forwards and backwards simultaneously until finding the function closest to lineHint.
+	else:
+		step = 0
+		startPosition = int(lineHint)
+		while(((startPosition + step) < len(fileString)) and ((startPosition - step) >= 0)):
+			if(-1 != fileString[startPosition + step].replace(" ","").replace("\t","").find(returnType+functionName)):
+				start = startPosition + step
+				break
+			if(-1 != fileString[startPosition - step].replace(" ","").replace("\t","").find(returnType+functionName)):
+				start = startPosition - step
+				break
+			step += 1
+		#Count braces after finding the first one, and return the line numbers.
+		first = True
+		countBraces = 0
+		found = False
+		end = 0
+		for subLineNumber in range(start,len(fileString)):
+			for char in fileString[subLineNumber]:
+				if(countBraces <= 0 and not first):
+					end = subLineNumber
+					found = True
+					break
+				if(char == '{'):
+					if(first):
+						first = False
+						countBraces += 1
+					else:
+						countBraces += 1
+				elif(char == '}'):
+					countBraces -= 1
+			if(found):
+				break
+		return textListToString(fileString[start:end+1])
+
+#Open and read the configuration file.
+try:
+	configurationFile = open(workingDirectory + 'configuration', "r")
+except IOError:
+	print("Error:\n   No configuration file found in current directory.\n")
+	exit(1)
+configurationFileText = configurationFile.read()
+configurationFile.close()
+
+#Build a dictionary of the data in the configuration file.
+configurationFileLines = configurationFileText.split("\n")
+configurationParameters = {}
+for lineNumber in range(len(configurationFileLines)):
+	if(configurationFileLines[lineNumber].find('=') != -1):
+		splitLine = configurationFileLines[lineNumber].split('=')
+		try:
+			start, end = splitLine[1].index('"'), splitLine[1].rindex('"')
+		except ValueError:
+			print("Error:\n   configuration - Unclosed quotes on line " + str(lineNumber) + ".\n")
+			sys.exit(1)
+		configurationParameters[splitLine[0].strip()] = splitLine[1][start+1:end]
+	else:
+		pass
+		#print("Warning:\n   configuration - Unparsable text on line " + str(lineNumber) + ".\n")
+
+#Retrieve a list of test case directories.
+testDirectoryList = commands.getoutput('ls -1 --color=never ' + workingDirectory + 'tests')
+testDirectoryList = testDirectoryList.split("\n")
+
+#Set the initial reportText to the report header.
+reportText = configurationParameters[reportTitleKeyword] + " - " + configurationParameters[reportDescriptionKeyword] + "\n\n"
+
+#Iterate through each test case directory.
+for testDirectory in testDirectoryList:
+	if(configurationParameters[groupReportsByFolderKeyword] == "false"):
+		reportText += testDirectory + ":\n\n"
+	print("Current Directory: " + testDirectory)
+	
+	#Retrieve a list of test case files.
+	testFileNameList = commands.getoutput('ls -1 --color=never "' + workingDirectory + 'tests/' + testDirectory + '"')
+	testFileNameList = testFileNameList.split("\n")
+	
+	#Iterate through each test case file.
+	for testFileName in testFileNameList:
+		print("Test File: " + testFileName)
+		
+		#Open and read the test case file.
+		#print("File: " + testFileName)
+		testFile = open(workingDirectory + 'tests/' + testDirectory + '/' + testFileName,"r")
+		testFileText = testFile.read()
+		testFile.close()
+		
+		#Build a dictionary of the data in the test case file.
+		testFileLines = testFileText.split("\n")
+		testConfigurationParameters = {}
+		for lineNumber in range(len(testFileLines)):
+			if(testFileLines[lineNumber].find('=') != -1):
+				splitLine = testFileLines[lineNumber].split('=')
+				try:
+					start, end = splitLine[1].index('"'), splitLine[1].rindex('"')
+				except ValueError:
+					print("Error:\n   " + testDirectory + "/" + testFileName + " - " + "Unclosed quotes on line " + str(lineNumber) + ".\n")
+					sys.exit(1)
+				testConfigurationParameters[splitLine[0].strip()] = splitLine[1][start+1:end]
+			elif(testFileLines[lineNumber].count('~') == 2 and (testFileLines[lineNumber].rfind('~') - testFileLines[lineNumber].find('~')) > 1):
+				start, end = testFileLines[lineNumber].index('~'), testFileLines[lineNumber].rindex('~')
+				testConfigurationParameters[testFileLines[lineNumber][start+1:end]] = lineNumber
+			else:
+				pass
+				#print("Warning:\n   " + testDirectory + "/" + testFileName + " - Unparsable text on line " + str(lineNumber) + ".\n")
+		
+		#Load header, printStatement, and result text if it exists.
+		try:
+			start, end = testConfigurationParameters[headerKeyword], testConfigurationParameters[endHeaderKeyword]
+			headerText = ""
+			for lineNumber in range(start + 1, end):
+				headerText += testFileLines[lineNumber] + "\n"
+		except KeyError:
+			pass
+		try:
+			start, end = testConfigurationParameters[printStatementKeyword], testConfigurationParameters[endPrintStatementKeyword]
+			printStatementText = ""
+			for lineNumber in range(start + 1, end):
+				printStatementText += testFileLines[lineNumber] + "\n"
+		except KeyError:
+			print("Warning:\n   " + testDirectory + "/" + testFileName + " - No print statement defined.\n")
+		try:
+			start, end = testConfigurationParameters[expectedResultKeyword], testConfigurationParameters[endExpectedResultKeyword]
+			expectedResultText = ""
+			for lineNumber in range(start + 1, end):
+				expectedResultText += testFileLines[lineNumber] + "\n"
+			expectedResultText = expectedResultText[:-1]
+		except KeyError:
+			print("Error:\n   " + testDirectory + "/" + testFileName + " - No expected result defined.\n")
+			#exit(1)
+		
+		#Open the source file to be tested.
+		sourceFile = open(configurationParameters[sourceDirectoryKeyword] + testConfigurationParameters[fileKeyword],"r")
+		sourceFileText = sourceFile.readlines()
+		
+		#Find the line numbers and retrieve the text.
+		try:
+			sourceFunctionText = findFunctionInFile(sourceFileText,testConfigurationParameters[functionKeyword],testConfigurationParameters[returnTypeKeyword],testConfigurationParameters[lineHintKeyword])
+		except KeyError:
+			sourceFunctionText = findFunctionInFile(sourceFileText,testConfigurationParameters[functionKeyword],testConfigurationParameters[returnTypeKeyword])
+		#sourceFunctionText = textListToString(sourceFileText[lineNumbers[0]:lineNumbers[1]])
+		sourceFile.close()
+		
+		#Prepare for file generation and compilation.
+		if(testConfigurationParameters[compilerKeyword] == 'gcc'):
+			extension = "c"
+			cppOption = ""
+		elif(testConfigurationParameters[compilerKeyword] == 'g++'):
+			extension = "cpp"
+			cppOption = " -std=c++0x "
+		headerFile = open("/usr/share/c-extraction-test/resources/header." + extension,"r")
+		headerFileText = textListToString(headerFile.readlines())
+		headerFile.close()
+		mainFile = open("/usr/share/c-extraction-test/resources/main." + extension,"r")
+		mainFileText = textListToString(mainFile.readlines())
+		mainFile.close()
+		endFile = open("/usr/share/c-extraction-test/resources/end." + extension,"r")
+		endFileText = textListToString(endFile.readlines())
+		endFile.close()
+		
+		#Generate the file for compilation.
+		outputFileText = ""
+		outputFileText += headerFileText
+		try:
+			outputFileText += headerText
+		except NameError:
+			pass
+		outputFileText += sourceFunctionText
+		outputFileText += mainFileText
+		if(testConfigurationParameters[doesReturnKeyword].lower() == "true"):
+			outputFileText += "\t" + testConfigurationParameters[returnTypeKeyword] + " output = " + testConfigurationParameters[functionKeyword] + "( " + testConfigurationParameters[parametersKeyword] + ");\n"
+		else:
+			outputFileText += "\t" + testConfigurationParameters[functionKeyword] + "( " + testConfigurationParameters[parametersKeyword] + ");\n"
+		try:
+			outputFileText += "\t" + printStatementText
+		except NameError:
+			pass
+		outputFileText += endFileText
+		
+		#Write the generated file.
+		outputFile = open(workingDirectory + "generated/" + testConfigurationParameters[titleKeyword] + "." + extension,'w')
+		outputFile.write(outputFileText)
+		outputFile.close()
+
+		#Compile the generated file.
+		try:
+			test = testConfigurationParameters[compilerParametersKeyword]
+		except KeyError:
+			testConfigurationParameters[compilerParametersKeyword] = ""
+		supressWarnings = ""
+		try:
+			if(testConfigurationParameters[supressWarningsKeyword].lower() == "true"):
+				supressWarnings = " -w "
+		except KeyError:
+			pass
+		compileStatus = commands.getstatusoutput(testConfigurationParameters[compilerKeyword] + supressWarnings + cppOption + testConfigurationParameters[compilerParametersKeyword] + ' -o "' + workingDirectory + 'binaries/' + testConfigurationParameters[titleKeyword] + '" "' + workingDirectory + './generated/' + testConfigurationParameters[titleKeyword] + '.' + extension + '"')
+		compileResultsFile = open(workingDirectory + "./compiler-results/" + testConfigurationParameters[titleKeyword] + ".output", 'w')
+		compileResultsFile.write(compileStatus[1])
+		
+		#If the compile was successful, run the binary, compare results, and append to the report.
+		#If the compile failed, write the report.
+		if(compileStatus[0] == 0):
+			runStatus = commands.getstatusoutput('"' + workingDirectory + './binaries/' + testConfigurationParameters[titleKeyword] + '"')
+			reportText += testConfigurationParameters[titleKeyword] + ": " + results(expectedResultText, runStatus[1]) + "\n"
+			reportText += "File: " + configurationParameters[sourceDirectoryKeyword] + testConfigurationParameters[fileKeyword] + "\n"
+			reportText += "Generated File: " + workingDirectory + "generated/" + testConfigurationParameters[titleKeyword] + "." + extension + "\n"
+			reportText += "Function: " + testConfigurationParameters[functionKeyword] + "\n"
+			reportText += "Parameters: " + testConfigurationParameters[parametersKeyword] + "\n"
+			reportText += "Expected Result: " + expectedResultText + "\n"
+			reportText += "Actual Result: " + runStatus[1] + "\n\n"
+		else:
+			reportText += testConfigurationParameters[titleKeyword] + ": " + results(expectedResultText, "DNC") + "\n"
+			reportText += "File: " + configurationParameters[sourceDirectoryKeyword] + testConfigurationParameters[fileKeyword] + "\n"
+			reportText += "Generated File: " + workingDirectory + "generated/" + testConfigurationParameters[titleKeyword] + "." + extension + "\n"
+			reportText += "Compiler Results: " + workingDirectory + "compiler-results/" + testFileName + "\n"
+			reportText += "Function: " + testConfigurationParameters[functionKeyword] + "\n"
+			reportText += "Parameters: " + testConfigurationParameters[parametersKeyword] + "\n"
+			reportText += "Expected Result: " + expectedResultText + "\n"
+			reportText += "Actual Result: DNC\n\n"
+	
+	#Determines whether the reports are separated by directory or combined.
+	#If separated, then write out the current report.
+	if(configurationParameters[groupReportsByFolderKeyword] == "true"):
+		reportFile = open(workingDirectory + "reports/" + testDirectory, "w")
+		reportFile.write(reportText)
+		reportFile.close()
+		reportText = configurationParameters[reportTitleKeyword] + " - " + configurationParameters[reportDescriptionKeyword] + "\n\n"
+	else:
+		reportText += "\n"
+
+#If the reports are combined, write out the report.
+if(configurationParameters[groupReportsByFolderKeyword] == "false"):
+	reportFile = open(workingDirectory + "reports/" + configurationParameters[reportTitleKeyword], "w")
+	reportFile.write(reportText)
+	reportFile.close()
