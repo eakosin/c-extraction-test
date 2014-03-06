@@ -7,7 +7,9 @@ Requirements:
 	
 Installation:
 
-	Copy the bin and share folders to /usr.
+	Run install.sh as root.
+
+	Manual Installation - Copy the bin and share folders to /usr/local or /usr.
 
 
 Running:
@@ -33,4 +35,4 @@ Running:
 
 TODO:
 
-	Create install script, create man page.
+	Replace commands with subprocess to add python 3 compatibility.

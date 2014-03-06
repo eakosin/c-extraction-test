@@ -1,0 +1,60 @@
+.\" Manpage for c-extraction-test.
+.\" Contact eakosin@gmail.com to correct errors or typos.
+.TH man 7 "06 March 2014" "1.0" "c-extraction-test man page"
+.SH NAME
+c-extraction-test \- test C and C++ functions through extraction
+.SH SYNOPSIS
+c-extraction-test [OPTIONS] [DIRECTORY]
+.SH DESCRIPTION
+c-extraction-test is a testing framework to extract C and C++ functions from a code base and run unit style tests on them. Use the -g option to generate template files to create a test framework from.
+
+configuration \- Configuration settings for the test framework.
+       reportTitle \- Title that will be added to the top of the report file.
+       reportDescription \- Description that will be added to the top of the report file.
+       sourceDirectory \- Path to the source code directory to be tested.
+       groupReportsByDirectory \- Whether to produce a single report file or one per test case directory.
+
+tests \- Directory containing directories of test case files.
+
+[testcase file] \- The file describing the test. Can have any name. Must be placed in a directory in tests.
+       title \- Title that will be used to identify the test case in the report file.
+       description \- Description of the test case in the report file.
+       file \- File to pull the function from.
+       function \- Name of the function pull.
+       [lineHint] \- If included, start searching here for function working out bidirectionally until the function is found. If not included, every instance of function is pulled to allow overloading support.
+       parameters \- Parameters supplied to the function for testing.
+       returnType \- Return type used to find function.
+       doesReturn \- Whether the function returns a value.
+       compiler \- Whether the gcc or g++ compiler should be used.
+       compilerParameters \- Command line options for the compiler.
+       supressWarnings \- Pass command to supress warnings to the compiler.
+       ~HEADER~
+       [Code that is placed before main and the copied function]
+       ~ENDHEADER~
+       ~PRINTSTATEMENT~
+       [Code that prints the results of the function call for test comparison]
+       ~ENDPRINTSTATEMENT~
+       ~EXPECTEDRESULT~
+       [Text that is the expected output from the function test]
+       ~ENDEXPECTEDRESULT~
+
+If the file fails to compile, whether expected or not, the report will display DNC and the compiler output will be in the compiler\-results directory.
+
+Generated code will be located in the generated directory.
+
+Compiled binaries will be located in the binaries directory.
+
+The resulting reports will be located in the reports directory.
+.SH OPTIONS
+  \-h, \-\-help            Show help message.
+
+  \-g, \-\-generate        Generate template test configuration in the current directory.
+  
+  \-d DIRECTORY, \-\-directory=DIRECTORY
+                           Specify a DIRECTORY to work out of. This also modifies the \-g option.
+.SH USAGE
+Run c-extraction-test inside directory with configuration file and tests directory. Similar to using a Makefile.
+.SH BUGS
+No known bugs.
+.SH AUTHOR
+Evan Kosin (eakosin@gmail.com)

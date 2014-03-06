@@ -33,17 +33,26 @@ if(options.directory != None):
 	workingDirectory = options.directory
 
 if(options.generate):
-	status = commands.getstatusoutput('tar -xf /usr/share/c-extraction-test/template.tar -C ' + workingDirectory)
+	status = commands.getstatusoutput('tar -xf /usr/local/share/c-extraction-test/template.tar -C ' + workingDirectory)
 	if(status[0] != 0):
 		print("Error:\n   Could not copy data.")
 		exit(1)
 	exit(0)
 
+#Open and read the configuration file.
+try:
+	configurationFile = open(workingDirectory + 'configuration', "r")
+except IOError:
+	print("Error:\n   No configuration file found in current directory.\n")
+	exit(1)
+configurationFileText = configurationFile.read()
+configurationFile.close()
+
 #Configuration File Keywords
 reportTitleKeyword = "reportTitle"
 reportDescriptionKeyword = "reportDescription"
 sourceDirectoryKeyword = "sourceDirectory"
-groupReportsByFolderKeyword = "groupReportsByFolder"
+groupReportsByFolderKeyword = "groupReportsByDirectory"
 
 #Test Case File Keywords
 titleKeyword = "title"
@@ -163,15 +172,6 @@ def findFunctionInFile(fileString, functionName, returnType, lineHint = -1):
 				break
 		return textListToString(fileString[start:end+1])
 
-#Open and read the configuration file.
-try:
-	configurationFile = open(workingDirectory + 'configuration', "r")
-except IOError:
-	print("Error:\n   No configuration file found in current directory.\n")
-	exit(1)
-configurationFileText = configurationFile.read()
-configurationFile.close()
-
 #Build a dictionary of the data in the configuration file.
 configurationFileLines = configurationFileText.split("\n")
 configurationParameters = {}
@@ -278,13 +278,13 @@ for testDirectory in testDirectoryList:
 		elif(testConfigurationParameters[compilerKeyword] == 'g++'):
 			extension = "cpp"
 			cppOption = " -std=c++0x "
-		headerFile = open("/usr/share/c-extraction-test/resources/header." + extension,"r")
+		headerFile = open("/usr/local/share/c-extraction-test/resources/header." + extension,"r")
 		headerFileText = textListToString(headerFile.readlines())
 		headerFile.close()
-		mainFile = open("/usr/share/c-extraction-test/resources/main." + extension,"r")
+		mainFile = open("/usr/local/share/c-extraction-test/resources/main." + extension,"r")
 		mainFileText = textListToString(mainFile.readlines())
 		mainFile.close()
-		endFile = open("/usr/share/c-extraction-test/resources/end." + extension,"r")
+		endFile = open("/usr/local/share/c-extraction-test/resources/end." + extension,"r")
 		endFileText = textListToString(endFile.readlines())
 		endFile.close()
 		
